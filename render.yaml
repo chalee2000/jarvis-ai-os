@@ -1,0 +1,52 @@
+# Render Blueprint สำหรับ JARVIS V1 — สร้างทรัพยากร "ใหม่" เท่านั้น (ชื่อ jarvis-v1-*)
+# ไม่อ้างอิง service, database, environment group หรือ domain เดิมใด ๆ
+#
+# ค่าใช้จ่าย (ตรวจหน้า https://render.com/pricing ก่อนกดสร้างเสมอ):
+#   - jarvis-v1-web  plan: starter      ประมาณ US$7/เดือน (512 MB RAM, 0.5 CPU)
+#   - jarvis-v1-db   plan: basic-256mb  ประมาณ US$6/เดือน + ค่าพื้นที่เก็บข้อมูลตามจริง
+#   ราคาอาจเปลี่ยนได้ และอาจมีค่า workspace plan เพิ่ม — ไม่ใช่บริการฟรีถาวร
+#
+# preDeployCommand ใช้ได้กับ instance แบบเสียเงินเท่านั้น (starter ขึ้นไป)
+
+services:
+  - type: web
+    name: jarvis-v1-web
+    runtime: node
+    plan: starter
+    region: singapore
+    # ติดตั้ง devDependencies ด้วย เพราะ NODE_ENV=production แต่ต้องใช้ vite/typescript ตอน build
+    buildCommand: npm ci --include=dev && npm run build
+    # รัน migration (idempotent, มี advisory lock) ก่อนสลับไปเวอร์ชันใหม่
+    preDeployCommand: npm run migrate
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: jarvis-v1-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      # ใส่ URL ของ service นี้ เช่น https://jarvis-v1-web.onrender.com
+      # ถ้าเว้นว่าง แอปจะใช้ RENDER_EXTERNAL_URL ที่ Render กำหนดให้อัตโนมัติ
+      - key: APP_ORIGIN
+        sync: false
+      # เริ่มด้วยโหมดจำลอง (ไม่มีค่าใช้จ่าย API) — เปลี่ยนเป็น false เมื่อพร้อมใช้ Claude API
+      - key: MOCK_MODE
+        value: "true"
+      # กรอกใน Render Dashboard เท่านั้น ห้ามใส่ค่าจริงในไฟล์นี้
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-opus-5-5
+
+databases:
+  - name: jarvis-v1-db
+    plan: basic-256mb
+    region: singapore
+    databaseName: jarvis
+    user: jarvis
+    # รายการว่าง = ไม่เปิดให้เชื่อมต่อจากอินเทอร์เน็ต ใช้ได้เฉพาะ private network ของ Render
+    ipAllowList: []
